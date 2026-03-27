@@ -54,4 +54,58 @@ std::vector<std::vector<std::vector<int>>> VectorEnv::GetObservations() {
   return obs;
 }
 
+std::vector<int> VectorEnv::GetObservationsFlat() {
+  int obs_size = (2 * window_radius_ + 1) * (2 * window_radius_ + 1);
+  std::vector<int> flat(num_envs_ * num_agents_ * obs_size);
+
+  std::vector<std::thread> threads;
+  threads.reserve(num_envs_);
+  for (int i = 0; i < num_envs_; i++) {
+    threads.emplace_back([this, &flat, obs_size, i]() {
+      auto obs = envs_[i].GetObservations();
+      int base = i * num_agents_ * obs_size;
+      for (int a = 0; a < num_agents_; a++) {
+        std::copy(obs[a].begin(), obs[a].end(),
+                  flat.begin() + base + a * obs_size);
+      }
+    });
+  }
+  for (auto& t : threads) t.join();
+  return flat;
+}
+
+std::vector<bool> VectorEnv::GetAlive() {
+  std::vector<bool> alive(num_envs_ * num_agents_);
+  for (int i = 0; i < num_envs_; i++) {
+    for (int a = 0; a < num_agents_; a++) {
+      alive[i * num_agents_ + a] = envs_[i].snakes_[a].alive;
+    }
+  }
+  return alive;
+}
+
+std::vector<int> VectorEnv::GetTrailCounts() {
+  std::vector<int> counts(num_envs_ * num_agents_, 0);
+  for (int i = 0; i < num_envs_; i++) {
+    int size = width_ * height_;
+    for (int j = 0; j < size; j++) {
+      int owner = envs_[i].trail_grid_[j];
+      if (owner >= 0) counts[i * num_agents_ + owner]++;
+    }
+  }
+  return counts;
+}
+
+std::vector<int> VectorEnv::GetTerritoryCounts() {
+  std::vector<int> counts(num_envs_ * num_agents_, 0);
+  for (int i = 0; i < num_envs_; i++) {
+    int size = width_ * height_;
+    for (int j = 0; j < size; j++) {
+      int owner = envs_[i].territory_grid_[j];
+      if (owner >= 0) counts[i * num_agents_ + owner]++;
+    }
+  }
+  return counts;
+}
+
 }  // namespace territories

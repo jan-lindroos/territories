@@ -1,6 +1,7 @@
 #include "env.h"
 #include "vector_env.h"
 
+#include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
@@ -35,6 +36,17 @@ PYBIND11_MODULE(territories, m) {
       .def("reset", &VectorEnv::Reset)
       .def("step", &VectorEnv::Step)
       .def("get_observations", &VectorEnv::GetObservations)
+      .def("get_observations_flat", &VectorEnv::GetObservationsFlat)
+      .def("get_observations_numpy", [](VectorEnv& self) {
+        auto flat = self.GetObservationsFlat();
+        int side = 2 * self.window_radius_ + 1;
+        auto result = py::array_t<int>({self.num_envs_, self.num_agents_, side * side});
+        std::copy(flat.begin(), flat.end(), result.mutable_data());
+        return result;
+      })
+      .def("get_alive", &VectorEnv::GetAlive)
+      .def("get_trail_counts", &VectorEnv::GetTrailCounts)
+      .def("get_territory_counts", &VectorEnv::GetTerritoryCounts)
       .def("get_env", &VectorEnv::GetEnv, py::return_value_policy::reference)
       .def_readonly("num_envs", &VectorEnv::num_envs_);
 }

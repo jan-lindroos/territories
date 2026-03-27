@@ -16,6 +16,10 @@ class VectorEnv {
   std::vector<std::vector<int>> Step(
       const std::vector<std::vector<int>>& actions);
   std::vector<std::vector<std::vector<int>>> GetObservations();
+  std::vector<int> GetObservationsFlat();
+  std::vector<bool> GetAlive();
+  std::vector<int> GetTrailCounts();
+  std::vector<int> GetTerritoryCounts();
 
   Env& GetEnv(int i) { return envs_[i]; }
 

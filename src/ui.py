@@ -1,22 +1,21 @@
 """Terminal UI for the Territories game."""
 
 import curses
-import random
 import time
+from pathlib import Path
+
+import torch
 
 from simulation import Action, Simulation
-
-AI = None  # Set to a callable(sim) -> list[Action] to use a custom policy.
+from train.ppo import Policy
 
 PLAYER_COLORS = [
     curses.COLOR_BLUE, curses.COLOR_RED, curses.COLOR_GREEN,
     curses.COLOR_YELLOW, curses.COLOR_MAGENTA, curses.COLOR_CYAN,
 ]
 CP_PLAYERS = 1
-
-# Directions: UP=0(dx=0,dy=-1), RIGHT=1(1,0), DOWN=2(0,1), LEFT=3(-1,0)
-DX = [0, 1, 0, -1]
-DY = [-1, 0, 1, 0]
+MODEL_PATH = Path(__file__).with_name("train") / "best.pt"
+GRID_SIDE = 11  # 2 * window_radius + 1
 
 
 def init_colors():
@@ -34,22 +33,25 @@ def put(win, r, c, text, attrs=0):
         pass
 
 
-def random_safe_actions(sim: Simulation) -> list[Action]:
-    """Pick random actions that avoid immediate wall death when possible."""
-    actions = []
-    for i in range(sim.num_agents):
-        if not sim.is_alive(i):
-            actions.append(Action.UP)
-            continue
-        s = sim.get_snake(i)
-        safe = []
-        for a in Action:
-            nx = s.x + DX[a]
-            ny = s.y + DY[a]
-            if 1 <= nx < sim.width - 1 and 1 <= ny < sim.height - 1:
-                safe.append(a)
-        actions.append(random.choice(safe) if safe else random.choice(list(Action)))
-    return actions
+def load_ai(path: Path = MODEL_PATH) -> "callable":
+    """Load a trained Policy and return an AI callable(sim) -> list[Action]."""
+    policy = Policy(num_channels=1, grid_side=GRID_SIDE, num_actions=4)
+    ckpt = torch.load(str(path), map_location="cpu", weights_only=True)
+    policy.load_state_dict(ckpt["policy"])
+    policy.eval()
+
+    @torch.no_grad()
+    def ai(sim: Simulation) -> list[Action]:
+        observations = sim.get_observations()
+        batch = torch.stack([
+            torch.tensor([(c + 4.0) / 7.0 for c in obs], dtype=torch.float32)
+                 .view(1, GRID_SIDE, GRID_SIDE)
+            for obs in observations
+        ])  # [N, 1, H, W]
+        logits, _ = policy(batch)
+        return [Action(a.item()) for a in logits.argmax(dim=-1)]
+
+    return ai
 
 
 def draw(stdscr, sim: Simulation, episode, paused, scores):
@@ -72,7 +74,6 @@ def draw(stdscr, sim: Simulation, episode, paused, scores):
     for y in range(h):
         for x in range(w):
             idx = y * w + x
-            # Check for head
             head_owner = -1
             for i in range(n):
                 if sim.is_alive(i):
@@ -111,8 +112,11 @@ def run(stdscr):
     curses.curs_set(0)
     stdscr.nodelay(True)
 
+    ai = load_ai()
+
     h, w, n = 30, 60, 4
-    sim = Simulation(num_agents=n, width=w, height=h)
+    window_radius = (GRID_SIDE - 1) // 2
+    sim = Simulation(num_agents=n, width=w, height=h, window_radius=window_radius)
     sim.reset()
     scores = [0] * n
     paused = False
@@ -130,14 +134,14 @@ def run(stdscr):
             time.sleep(0.05)
             continue
 
-        actions = AI(sim) if AI else random_safe_actions(sim)
+        actions = ai(sim)
         deltas, _ = sim.step(actions)
         for i in range(n):
             scores[i] += deltas[i]
 
         if not any(sim.is_alive(i) for i in range(n)):
             time.sleep(0.1)
-            sim = Simulation(num_agents=n, width=w, height=h)
+            sim = Simulation(num_agents=n, width=w, height=h, window_radius=window_radius)
             sim.reset()
             scores = [0] * n
             episode += 1
