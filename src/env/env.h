@@ -1,33 +1,53 @@
 #pragma once
+#include <optional>
 #include <random>
 #include <vector>
 
 namespace territories {
 
-struct Snake {
-  int x, y;
-  bool alive;
+enum Cell : int {
+    EMPTY            = 0,
+    OWN_HEAD         = 1,
+    OWN_TERRITORY    = 2,
+    OWN_TRAIL        = 3,
+    ENEMY_HEAD       = 4,
+    ENEMY_TERRITORY  = 5,
+    ENEMY_TRAIL      = 6,
+    WALL             = 7,
+};
+
+struct Agent {
+    int x = 0, y = 0;
+    bool is_alive = false;
+    int alive_steps = 0;
+    int kills = 0;
+    int territory = 0;
+    bool has_trail = false;
 };
 
 class Env {
- public:
-  const int num_agents_, width_, height_, window_radius_;
-  int seed_;
-  std::vector<Snake> snakes_;
-  std::vector<int> territory_grid_;  // -1 = empty, else agent_id
-  std::vector<int> trail_grid_;      // -1 = empty, else agent_id
-  std::mt19937 rng_;
+public:
+    Env(int num_agents, int width, int height, int window_radius, int seed);
+    void reset();
+    void step(const std::vector<int>& actions);
+    const std::vector<int>& get_obs();
+    const std::vector<Agent>& get_agents() const;
 
-  Env(int num_agents, int width, int height, int window_radius, int seed = -1);
+private:
+    void move_agents(const std::vector<int>& actions);
+    void resolve_collisions();
+    void resolve_trails();
+    void kill(std::optional<int> killer, int victim);
+    void capture_territory(int agent_idx);
+    void update_counts();
+    int cell(int x, int y) const;
+    int grid_size() const;
+    static void apply_action(int action, int& x, int& y);
 
-  void Reset();
-  std::vector<int> Step(const std::vector<int>& actions);
-  std::vector<std::vector<int>> GetObservations();
-
- private:
-  void SpawnSnakes();
-  void KillSnake(int id);
-  void ClaimTerritory(int id);
+    std::mt19937 rng_;
+    const int num_agents_, width_, height_, window_radius_;
+    std::vector<int> territories_, trails_, obs_;
+    std::vector<Agent> agents_;
 };
 
-}  // namespace territories
+}

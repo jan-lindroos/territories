@@ -1,214 +1,257 @@
 #include "env.h"
-
+#include <algorithm>
 #include <queue>
 
 namespace territories {
 
-constexpr int kDx[] = {0, 1, 0, -1};
-constexpr int kDy[] = {-1, 0, 1, 0};
-
 Env::Env(int num_agents, int width, int height, int window_radius, int seed)
-    : num_agents_(num_agents),
+    : rng_(seed),
+      num_agents_(num_agents),
       width_(width),
       height_(height),
-      window_radius_(window_radius),
-      seed_(seed) {
-  Reset();
+      window_radius_(window_radius) {
+    reset();
 }
 
-void Env::Reset() {
-  int size = width_ * height_;
-  territory_grid_.assign(size, -1);
-  trail_grid_.assign(size, -1);
-  snakes_.clear();
-  rng_.seed(seed_ >= 0 ? seed_ : std::random_device{}());
-  SpawnSnakes();
+int Env::cell(int x, int y) const {
+    return y * width_ + x;
 }
 
-void Env::SpawnSnakes() {
-  std::uniform_int_distribution<int> x_dist(2, width_ - 3);
-  std::uniform_int_distribution<int> y_dist(1, height_ - 2);
-  for (int i = 0; i < num_agents_; i++) {
-    int x, y;
-    do {
-      x = x_dist(rng_);
-      y = y_dist(rng_);
-    } while (territory_grid_[y * width_ + x] != -1);
-    snakes_.push_back({x, y, true});
-    for (int dx = -1; dx <= 1; dx++) {
-      territory_grid_[y * width_ + x + dx] = i;
-    }
-  }
+int Env::grid_size() const {
+    return width_ * height_;
 }
 
-void Env::KillSnake(int id) {
-  snakes_[id].alive = false;
-  int size = width_ * height_;
-  for (int i = 0; i < size; i++) {
-    if (territory_grid_[i] == id) territory_grid_[i] = -1;
-    if (trail_grid_[i] == id) trail_grid_[i] = -1;
-  }
+void Env::apply_action(int action, int& x, int& y) {
+    switch (action) {
+        case 0: y--; break;
+        case 1: x++; break;
+        case 2: y++; break;
+        case 3: x--; break;
+    }
 }
 
-void Env::ClaimTerritory(int id) {
-  int size = width_ * height_;
-  for (int i = 0; i < size; i++) {
-    if (trail_grid_[i] == id) {
-      trail_grid_[i] = -1;
-      territory_grid_[i] = id;
-    }
-  }
+void Env::kill(std::optional<int> killer, int victim) {
+    agents_[victim].is_alive = false;
+    if (killer) 
+        agents_[*killer].kills++;
 
-  // Flood fill from borders to find cells NOT enclosed by this snake.
-  std::vector<bool> reachable(size, false);
-  std::queue<int> q;
-  for (int x = 0; x < width_; x++) {
-    for (int y : {0, height_ - 1}) {
-      int idx = y * width_ + x;
-      if (territory_grid_[idx] != id && !reachable[idx]) {
-        reachable[idx] = true;
-        q.push(idx);
-      }
+    int grid_id = victim + 1;
+    for (int i = 0; i < grid_size(); ++i) {
+        if (trails_[i] == grid_id) 
+            trails_[i] = 0;
+        if (territories_[i] == grid_id) 
+            territories_[i] = 0;
     }
-  }
-  for (int y = 1; y < height_ - 1; y++) {
-    for (int x : {0, width_ - 1}) {
-      int idx = y * width_ + x;
-      if (territory_grid_[idx] != id && !reachable[idx]) {
-        reachable[idx] = true;
-        q.push(idx);
-      }
-    }
-  }
-  while (!q.empty()) {
-    int idx = q.front();
-    q.pop();
-    int x = idx % width_, y = idx / width_;
-    for (int d = 0; d < 4; d++) {
-      int nx = x + kDx[d], ny = y + kDy[d];
-      if (nx < 0 || nx >= width_ || ny < 0 || ny >= height_) continue;
-      int nidx = ny * width_ + nx;
-      if (!reachable[nidx] && territory_grid_[nidx] != id) {
-        reachable[nidx] = true;
-        q.push(nidx);
-      }
-    }
-  }
-
-  for (int i = 0; i < size; i++) {
-    if (!reachable[i]) territory_grid_[i] = id;
-  }
 }
 
-std::vector<int> Env::Step(const std::vector<int>& actions) {
-  int size = width_ * height_;
+void Env::capture_territory(int agent_idx) {
+    if (!agents_[agent_idx].has_trail)
+        return;
 
-  // Snapshot territory counts for scoring.
-  std::vector<int> old_counts(num_agents_, 0);
-  for (int cell : territory_grid_) {
-    if (cell >= 0) old_counts[cell]++;
-  }
+    int grid_id = agent_idx + 1;
 
-  // Move.
-  for (int i = 0; i < num_agents_; i++) {
-    if (!snakes_[i].alive) continue;
-    snakes_[i].x += kDx[actions[i]];
-    snakes_[i].y += kDy[actions[i]];
-  }
-
-  // Wall deaths.
-  for (int i = 0; i < num_agents_; i++) {
-    if (!snakes_[i].alive) continue;
-    if (snakes_[i].x <= 0 || snakes_[i].x >= width_ - 1 ||
-        snakes_[i].y <= 0 || snakes_[i].y >= height_ - 1) {
-      KillSnake(i);
+    // Collect trail cells and convert trail to territory
+    std::vector<int> trail_cells;
+    for (int i = 0; i < grid_size(); ++i) {
+        if (trails_[i] == grid_id) {
+            trails_[i] = 0;
+            territories_[i] = grid_id;
+            trail_cells.push_back(i);
+        }
     }
-  }
 
-  // Trail collisions: stepping on a trail kills the trail owner.
-  for (int i = 0; i < num_agents_; i++) {
-    if (!snakes_[i].alive) continue;
-    int trail_owner = trail_grid_[snakes_[i].y * width_ + snakes_[i].x];
-    if (trail_owner >= 0) KillSnake(trail_owner);
-  }
+    // For each trail cell, try to flood fill non-territory neighbors.
+    // If a fill reaches the grid border, it's exterior — discard.
+    // If it stays contained, it's interior — claim it.
+    std::vector<bool> visited(grid_size(), false);
+    for (int tc : trail_cells) visited[tc] = true;
 
-  // Head-on collisions.
-  for (int i = 0; i < num_agents_; i++) {
-    if (!snakes_[i].alive) continue;
-    for (int j = i + 1; j < num_agents_; j++) {
-      if (!snakes_[j].alive) continue;
-      if (snakes_[i].x == snakes_[j].x && snakes_[i].y == snakes_[j].y) {
-        KillSnake(i);
-        KillSnake(j);
-      }
+    for (int tc : trail_cells) {
+        int tx = tc % width_, ty = tc / width_;
+        for (int d = 0; d < 4; ++d) {
+            int sx = tx, sy = ty;
+            apply_action(d, sx, sy);
+            if (sx < 0 || sx >= width_ || sy < 0 || sy >= height_) continue;
+            int sc = cell(sx, sy);
+            if (visited[sc] || territories_[sc] == grid_id) continue;
+
+            // BFS from this seed
+            std::vector<int> filled;
+            std::queue<int> q;
+            bool hit_border = false;
+            visited[sc] = true;
+            q.push(sc);
+            while (!q.empty()) {
+                int c = q.front(); q.pop();
+                filled.push_back(c);
+                int cx = c % width_, cy = c / width_;
+                if (cx == 0 || cx == width_ - 1 || cy == 0 || cy == height_ - 1)
+                    hit_border = true;
+                for (int dd = 0; dd < 4; ++dd) {
+                    int nx = cx, ny = cy;
+                    apply_action(dd, nx, ny);
+                    if (nx < 0 || nx >= width_ || ny < 0 || ny >= height_) continue;
+                    int nc = cell(nx, ny);
+                    if (!visited[nc] && territories_[nc] != grid_id) {
+                        visited[nc] = true;
+                        q.push(nc);
+                    }
+                }
+            }
+            if (!hit_border) {
+                for (int c : filled) territories_[c] = grid_id;
+            }
+        }
     }
-  }
 
-  // Territory claims and trail placement.
-  for (int i = 0; i < num_agents_; i++) {
-    if (!snakes_[i].alive) continue;
-    int idx = snakes_[i].y * width_ + snakes_[i].x;
-    bool has_trail = false;
-    for (int j = 0; j < size && !has_trail; j++) {
-      has_trail = (trail_grid_[j] == i);
+    // Kill any agent caught inside our new territory
+    for (int j = 0; j < num_agents_; ++j) {
+        if (j == agent_idx || !agents_[j].is_alive) continue;
+        if (territories_[cell(agents_[j].x, agents_[j].y)] == grid_id) {
+            kill(agent_idx, j);
+        }
     }
-    if (territory_grid_[idx] == i && has_trail) {
-      ClaimTerritory(i);
-    } else if (territory_grid_[idx] != i) {
-      trail_grid_[idx] = i;
-    }
-  }
-
-  // Score = net territory change.
-  std::vector<int> scores(num_agents_, 0);
-  for (int cell : territory_grid_) {
-    if (cell >= 0) scores[cell]++;
-  }
-  for (int i = 0; i < num_agents_; i++) {
-    scores[i] -= old_counts[i];
-  }
-  return scores;
 }
 
-std::vector<std::vector<int>> Env::GetObservations() {
-  int side = 2 * window_radius_ + 1;
-  std::vector<std::vector<int>> obs(
-      num_agents_, std::vector<int>(side * side, 0));
+void Env::update_counts() {
+    for (int i = 0; i < num_agents_; ++i) {
+        agents_[i].territory = 0;
+        agents_[i].has_trail = false;
+    }
+    for (int i = 0; i < grid_size(); ++i) {
+        if (territories_[i] != 0) agents_[territories_[i] - 1].territory++;
+        if (trails_[i] != 0) agents_[trails_[i] - 1].has_trail = true;
+    }
+}
 
-  for (int i = 0; i < num_agents_; i++) {
-    if (!snakes_[i].alive) continue;
-    for (int dy = -window_radius_; dy <= window_radius_; dy++) {
-      for (int dx = -window_radius_; dx <= window_radius_; dx++) {
-        int wx = snakes_[i].x + dx, wy = snakes_[i].y + dy;
-        int oi = (dy + window_radius_) * side + (dx + window_radius_);
+void Env::reset() {
+    int side = 2 * window_radius_ + 1;
+    territories_.assign(grid_size(), 0);
+    trails_.assign(grid_size(), 0);
+    obs_.assign(num_agents_ * side * side, 0);
+    agents_.assign(num_agents_, Agent{});
 
-        if (wx <= 0 || wx >= width_ - 1 || wy <= 0 || wy >= height_ - 1) {
-          obs[i][oi] = -4;
-          continue;
+    std::uniform_int_distribution<int> dist_x(2, width_ - 3);
+    std::uniform_int_distribution<int> dist_y(2, height_ - 3);
+
+    for (int i = 0; i < num_agents_; ++i) {
+        agents_[i].x = dist_x(rng_);
+        agents_[i].y = dist_y(rng_);
+        agents_[i].is_alive = true;
+
+        // 3x3 starting territory
+        int id = i + 1;
+        for (int dy = -1; dy <= 1; ++dy) {
+            for (int dx = -1; dx <= 1; ++dx) {
+                territories_[cell(agents_[i].x + dx, agents_[i].y + dy)] = id;
+            }
+        }
+    }
+    update_counts();
+}
+
+void Env::move_agents(const std::vector<int>& actions) {
+    for (int i = 0; i < num_agents_; ++i) {
+        if (!agents_[i].is_alive) continue;
+        apply_action(std::clamp(actions[i], 0, 3), agents_[i].x, agents_[i].y);
+        agents_[i].x = std::clamp(agents_[i].x, 0, width_ - 1);
+        agents_[i].y = std::clamp(agents_[i].y, 0, height_ - 1);
+        agents_[i].alive_steps++;
+    }
+}
+
+void Env::resolve_collisions() {
+    for (int i = 0; i < num_agents_; ++i) {
+        if (!agents_[i].is_alive) continue;
+        for (int j = i + 1; j < num_agents_; ++j) {
+            if (!agents_[j].is_alive) continue;
+            if (agents_[i].x == agents_[j].x && agents_[i].y == agents_[j].y) {
+                kill(std::nullopt, i);
+                kill(std::nullopt, j);
+            }
+        }
+    }
+}
+
+void Env::resolve_trails() {
+    for (int i = 0; i < num_agents_; ++i) {
+        if (!agents_[i].is_alive) continue;
+        int c = cell(agents_[i].x, agents_[i].y);
+        int id = i + 1;
+
+        if (trails_[c] == id) {
+            kill(std::nullopt, i);
+            continue;
         }
 
-        int gi = wy * width_ + wx;
-
-        // Check heads first.
-        bool head = false;
-        for (int j = 0; j < num_agents_; j++) {
-          if (snakes_[j].alive && snakes_[j].x == wx && snakes_[j].y == wy) {
-            obs[i][oi] = (j == i) ? -3 : 3;
-            head = true;
-            break;
-          }
+        if (trails_[c] != 0 && trails_[c] != id) {
+            kill(i, trails_[c] - 1);
         }
-        if (head) continue;
 
-        if (trail_grid_[gi] >= 0) {
-          obs[i][oi] = (trail_grid_[gi] == i) ? -2 : 2;
-        } else if (territory_grid_[gi] >= 0) {
-          obs[i][oi] = (territory_grid_[gi] == i) ? -1 : 1;
+        if (territories_[c] == id) {
+            capture_territory(i);
+        } else {
+            trails_[c] = id;
         }
-      }
     }
-  }
-  return obs;
 }
 
-}  // namespace territories
+void Env::step(const std::vector<int>& actions) {
+    move_agents(actions);
+    resolve_collisions();
+    resolve_trails();
+    update_counts();
+}
+
+const std::vector<int>& Env::get_obs() {
+    int side = 2 * window_radius_ + 1;
+    int obs_size = side * side;
+    std::fill(obs_.begin(), obs_.end(), EMPTY);
+
+    for (int i = 0; i < num_agents_; ++i) {
+        if (!agents_[i].is_alive) 
+            continue;
+
+        int grid_id = i + 1;
+        int base = i * obs_size;
+        int idx = 0;
+        for (int dy = -window_radius_; dy <= window_radius_; ++dy) {
+            for (int dx = -window_radius_; dx <= window_radius_; ++dx) {
+                int wx = agents_[i].x + dx;
+                int wy = agents_[i].y + dy;
+                if (wx < 0 || wx >= width_ || wy < 0 || wy >= height_) {
+                    obs_[base + idx] = WALL;
+                } else if (dx == 0 && dy == 0) {
+                    obs_[base + idx] = OWN_HEAD;
+                } else {
+                    int c = cell(wx, wy);
+                    bool enemy_head = false;
+                    for (int j = 0; j < num_agents_; ++j) {
+                        if (j != i && agents_[j].is_alive && agents_[j].x == wx && agents_[j].y == wy) {
+                            enemy_head = true;
+                            break;
+                        }
+                    }
+                    if (enemy_head)                      
+                        obs_[base + idx] = ENEMY_HEAD;
+                    else if (territories_[c] == grid_id)      
+                        obs_[base + idx] = OWN_TERRITORY;
+                    else if (trails_[c] == grid_id)           
+                        obs_[base + idx] = OWN_TRAIL;
+                    else if (territories_[c] != 0)       
+                        obs_[base + idx] = ENEMY_TERRITORY;
+                    else if (trails_[c] != 0)            
+                        obs_[base + idx] = ENEMY_TRAIL;
+                }
+                ++idx;
+            }
+        }
+    }
+    return obs_;
+}
+
+const std::vector<Agent>& Env::get_agents() const {
+    return agents_;
+}
+
+}

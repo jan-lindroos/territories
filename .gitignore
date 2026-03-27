@@ -5,3 +5,4 @@
 *.so
 *.egg-info/
 build/
+.vscode
