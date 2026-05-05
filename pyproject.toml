@@ -12,8 +12,8 @@ dependencies = ["torch", "tqdm", "numpy"]
 territories = "cli:main"
 
 [tool.setuptools]
-py-modules = ["cli", "ui", "simulation"]
-packages = ["train"]
+py-modules = ["cli", "ui", "game"]
+packages = ["rl"]
 
 [tool.setuptools.package-dir]
 "" = "src"

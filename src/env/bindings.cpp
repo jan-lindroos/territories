@@ -31,8 +31,24 @@ PYBIND11_MODULE(territories, m) {
             return py::array_t<int>(
                 {static_cast<py::ssize_t>(obs.size())},
                 obs.data(),
-                py::cast(self)  // prevent gc
+                py::cast(self)
             );
         })
-        .def("get_agents", &Env::get_agents);
+        .def("get_agents", &Env::get_agents)
+        .def("get_territories", [](Env& self) {
+            const auto& t = self.get_territories();
+            auto arr = py::array_t<int>({static_cast<py::ssize_t>(t.size())});
+            auto buf = arr.mutable_unchecked<1>();
+            for (py::ssize_t i = 0; i < (py::ssize_t)t.size(); ++i)
+                buf(i) = t[i] - 1;  // 0-based agent index, -1 = empty
+            return arr;
+        })
+        .def("get_trails", [](Env& self) {
+            const auto& t = self.get_trails();
+            auto arr = py::array_t<int>({static_cast<py::ssize_t>(t.size())});
+            auto buf = arr.mutable_unchecked<1>();
+            for (py::ssize_t i = 0; i < (py::ssize_t)t.size(); ++i)
+                buf(i) = t[i] - 1;
+            return arr;
+        });
 }

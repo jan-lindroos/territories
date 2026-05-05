@@ -32,6 +32,8 @@ public:
     void step(const std::vector<int>& actions);
     const std::vector<int>& get_obs();
     const std::vector<Agent>& get_agents() const;
+    const std::vector<int>& get_territories() const;
+    const std::vector<int>& get_trails() const;
 
 private:
     void move_agents(const std::vector<int>& actions);

@@ -3,11 +3,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 import territories
 
+
 SEED = 42
 W, H = 40, 40
 RADIUS = 5
 
-# Actions: 0=UP, 1=RIGHT, 2=DOWN, 3=LEFT
 UP, RIGHT, DOWN, LEFT = 0, 1, 2, 3
 
 
@@ -49,7 +49,6 @@ def test_no_capture_without_return():
     env = make_env()
     env.reset()
     initial = env.get_agents()[0].territory
-    # Move UP twice to leave the 3x3 territory
     env.step([UP])
     env.step([UP])
     a = env.get_agents()[0]
@@ -63,7 +62,6 @@ def test_capture_kills_enclosed_agent():
     env = make_env(num_agents=2, width=80, height=80, seed=0)
     env.reset()
     agents = env.get_agents()
-    # Just verify both start alive; deterministic kill tests are hard to set up
     assert agents[0].is_alive
     assert agents[1].is_alive
 
@@ -127,8 +125,6 @@ def test_wall_clamp_causes_self_trail_death():
     assert not env.get_agents()[0].is_alive
 
 
-# --- Enemy trail collision ---
-
 def test_enemy_trail_kill():
     """Stepping on another agent's trail kills the trail owner."""
     # Use a small grid so agents are close and we can engineer a collision
@@ -142,8 +138,6 @@ def test_enemy_trail_kill():
     dead = [not a.is_alive for a in agents]
     assert any(dead)
 
-
-# --- Head-on collision ---
 
 def test_head_on_collision_both_die():
     """Two agents on the same cell both die, no killer credit."""
@@ -166,8 +160,6 @@ def test_head_on_collision_both_die():
     assert True
 
 
-# --- Dead agent is skipped ---
-
 def test_dead_agent_not_moved():
     """Dead agents stay put and don't interact."""
     env = make_env(width=10, height=10)
@@ -185,8 +177,6 @@ def test_dead_agent_not_moved():
     assert a.x == x_dead and a.y == y_dead
     assert not a.is_alive
 
-
-# --- Reset ---
 
 def test_reset_deterministic():
     """Same seed produces same agent positions."""

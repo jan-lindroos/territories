@@ -254,4 +254,12 @@ const std::vector<Agent>& Env::get_agents() const {
     return agents_;
 }
 
+const std::vector<int>& Env::get_territories() const {
+    return territories_;
+}
+
+const std::vector<int>& Env::get_trails() const {
+    return trails_;
+}
+
 }
