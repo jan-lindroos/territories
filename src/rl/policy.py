@@ -21,6 +21,8 @@ class Policy(nn.Module):
             nn.ReLU(),
             layer_init(nn.Conv2d(32, 64, 3, stride=2, padding=1)),
             nn.ReLU(),
+            layer_init(nn.Conv2d(64, 128, 3, stride=1, padding=1)),
+            nn.ReLU(),
             nn.Flatten(),
         )
 
@@ -30,10 +32,14 @@ class Policy(nn.Module):
         self.actor = nn.Sequential(
             layer_init(nn.Linear(flat_size, 64)),
             nn.ReLU(),
+            layer_init(nn.Linear(64, 64)),
+            nn.ReLU(),
             layer_init(nn.Linear(64, 4), std=0.01),
         )
         self.critic = nn.Sequential(
             layer_init(nn.Linear(flat_size, 64)),
+            nn.ReLU(),
+            layer_init(nn.Linear(64, 64)),
             nn.ReLU(),
             layer_init(nn.Linear(64, 1), std=1.0),
         )

@@ -13,6 +13,8 @@ class Curriculum:
         max_steps: int = 200,
         window_radius: int = 7,
         terr_delta_coef: float = 1.0,
+        terr_delta_min: float = 0,
+        terr_delta_max: float = 100,
         death_penalty: float = 0.0,
         leave_terr_bonus: float = 0.0,
         seed: int = 0
@@ -24,6 +26,8 @@ class Curriculum:
         self.current_step = 0
         self.window_radius = window_radius
         self._terr_delta_coef = terr_delta_coef
+        self._terr_delta_min = terr_delta_min
+        self._terr_delta_max = terr_delta_max
         self._death_penalty = death_penalty
         self._leave_terr_bonus = leave_terr_bonus
 
@@ -80,6 +84,7 @@ class Curriculum:
         curr_has_trail = self._get_has_trail()
 
         rewards = self._terr_delta_coef * (curr_terr - prev_terr)
+        rewards = np.clip(rewards, self._terr_delta_min, self._terr_delta_max)
 
         died = prev_alive & ~curr_alive
         rewards[died] += self._death_penalty
