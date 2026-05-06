@@ -60,7 +60,7 @@ def draw(stdscr, agents, territory: list[int], trail: list[int],
             if (x, y) in heads:
                 ci = heads[(x, y)] % len(PLAYER_COLORS)
                 put(stdscr, 2 + y, 1 + x * 2, "██",
-                    curses.color_pair(CP_BASE + ci * 2 + 1) | curses.A_BOLD)
+                    curses.color_pair(CP_BASE + ci * 2) | curses.A_BOLD)
             elif trail[idx] >= 0:
                 ci = trail[idx] % len(PLAYER_COLORS)
                 put(stdscr, 2 + y, 1 + x * 2, "░░",
