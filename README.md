@@ -1,5 +1,8 @@
 # Territories
 
+<img src="https://github.com/user-attachments/assets/73bd1ef1-ed5b-4430-b9a6-7c61c9d34742" width="400">
+
+
 A multi-agent grid-world where players carve out territory by drawing trails and closing loops, à la Splatoon / paper.io. Agents are trained from scratch with PPO and watched in a terminal UI.
 
 ## How the game works
