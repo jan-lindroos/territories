@@ -12,7 +12,7 @@ from ui import init_colors, draw
 
 def load_policy(checkpoint: Path) -> tuple[Policy, int]:
     ckpt = torch.load(str(checkpoint), map_location="cpu", weights_only=True)
-    window_radius = ckpt.get("window_radius", 7) if isinstance(ckpt, dict) else 7
+    window_radius = ckpt.get("window_radius", 10) if isinstance(ckpt, dict) else 10
     state_dict = ckpt["policy"] if isinstance(ckpt, dict) and "policy" in ckpt else ckpt
     policy = Policy(window_radius=window_radius)
     policy.load_state_dict(state_dict)

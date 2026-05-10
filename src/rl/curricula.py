@@ -6,8 +6,8 @@ import territories
 
 class Curriculum:
     def __init__(
-        self, 
-        num_envs: int = 1024, 
+        self,
+        num_envs: int = 1024,
         num_agents: int = 10,
         env_size: int = 50,
         max_steps: int = 200,
@@ -17,6 +17,7 @@ class Curriculum:
         terr_delta_max: float = 100,
         death_penalty: float = 0.0,
         leave_terr_bonus: float = 0.0,
+        kill_reward: float = 0.0,
         seed: int = 0
     ):
         self.num_envs = num_envs
@@ -30,6 +31,7 @@ class Curriculum:
         self._terr_delta_max = terr_delta_max
         self._death_penalty = death_penalty
         self._leave_terr_bonus = leave_terr_bonus
+        self._kill_reward = kill_reward
 
         self._envs = [
             territories.Env(
@@ -67,6 +69,12 @@ class Curriculum:
             for env in self._envs
         ], dtype=torch.bool)
 
+    def _get_kills(self):
+        return torch.tensor([
+            [a.kills for a in env.get_agents()]
+            for env in self._envs
+        ], dtype=torch.float32)
+
     def reset(self):
         self.current_step = 0
         for env in self._envs:
@@ -75,6 +83,7 @@ class Curriculum:
     def step(self, actions: torch.Tensor):
         prev_terr = self._get_territory()
         prev_alive = self.get_alive()
+        prev_kills = self._get_kills()
 
         for i, env in enumerate(self._envs):
             env.step(actions[i].int().tolist())
@@ -82,6 +91,7 @@ class Curriculum:
         curr_terr = self._get_territory()
         curr_alive = self.get_alive()
         curr_has_trail = self._get_has_trail()
+        curr_kills = self._get_kills()
 
         rewards = self._terr_delta_coef * (curr_terr - prev_terr)
         rewards = np.clip(rewards, self._terr_delta_min, self._terr_delta_max)
@@ -90,6 +100,8 @@ class Curriculum:
         rewards[died] += self._death_penalty
 
         rewards[curr_alive & curr_has_trail] += self._leave_terr_bonus
+
+        rewards += self._kill_reward * (curr_kills - prev_kills)
 
         self.current_step += 1
         return rewards

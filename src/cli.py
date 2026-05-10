@@ -2,7 +2,7 @@ import argparse
 import sys
 from pathlib import Path
 
-_DEFAULT_CHECKPOINT = Path(__file__).with_name("rl") / "checkpoints" / "stage_1_best.pt"
+_DEFAULT_CHECKPOINT = Path(__file__).with_name("rl") / "checkpoints" / "stage_2_best.pt"
 
 
 def main():
@@ -13,11 +13,11 @@ def main():
     play_p.add_argument(
         "-c", "--checkpoint", type=Path, default=_DEFAULT_CHECKPOINT,
         metavar="PATH",
-        help="path to .pt checkpoint (default: rl/checkpoints/stage_1_best.pt)",
+        help="path to .pt checkpoint (default: rl/checkpoints/stage_2_best.pt)",
     )
-    play_p.add_argument("-H", "--height", type=int, default=30)
-    play_p.add_argument("-W", "--width", type=int, default=30)
-    play_p.add_argument("-n", "--num-agents", type=int, default=6)
+    play_p.add_argument("-H", "--height", type=int, default=40)
+    play_p.add_argument("-W", "--width", type=int, default=40)
+    play_p.add_argument("-n", "--num-agents", type=int, default=10)
 
     args = parser.parse_args()
 
